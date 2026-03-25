@@ -42,8 +42,19 @@ export const initDb = async () => {
                     upvotes INTEGER DEFAULT 0,
                     downvotes INTEGER DEFAULT 0,
                     is_pinned BOOLEAN DEFAULT FALSE,
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    deleted_at TIMESTAMP WITH TIME ZONE
                 );
+                -- Add deleted_at column if it doesn't exist (for existing tables)
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'comments' AND column_name = 'deleted_at'
+                    ) THEN
+                        ALTER TABLE comments ADD COLUMN deleted_at TIMESTAMP WITH TIME ZONE;
+                    END IF;
+                END $$;
                 CREATE TABLE IF NOT EXISTS comment_votes (
                     id SERIAL PRIMARY KEY,
                     comment_id INTEGER REFERENCES comments(id) ON DELETE CASCADE,

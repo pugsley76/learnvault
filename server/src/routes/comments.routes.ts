@@ -25,7 +25,7 @@ commentsRouter.get("/proposals/:proposalId/comments", async (req, res) => {
 	const { proposalId } = req.params
 	try {
 		const result = await pool.query(
-			`SELECT * FROM comments WHERE proposal_id = $1 ORDER BY is_pinned DESC, created_at ASC`,
+			`SELECT * FROM comments WHERE proposal_id = $1 AND deleted_at IS NULL ORDER BY is_pinned DESC, created_at ASC`,
 			[proposalId],
 		)
 		res.json(result.rows)
@@ -109,7 +109,7 @@ commentsRouter.post(
  * @openapi
  * /api/comments/{id}:
  *   delete:
- *     summary: Delete own comment
+ *     summary: Delete own comment (soft delete)
  *     tags: [Comments]
  *     security: [{ bearerAuth: [] }]
  */
@@ -121,18 +121,25 @@ commentsRouter.delete(
 		const authorAddress = req.user?.address
 
 		try {
-			const result = await pool.query(
-				`DELETE FROM comments WHERE id = $1 AND author_address = $2 RETURNING *`,
+			// Check if comment exists and belongs to user (and not already deleted)
+			const checkResult = await pool.query(
+				`SELECT * FROM comments WHERE id = $1 AND author_address = $2 AND deleted_at IS NULL`,
 				[id, authorAddress],
 			)
 
-			if (result.rowCount === 0) {
+			if (checkResult.rowCount === 0) {
 				return res
 					.status(404)
 					.json({ error: "Comment not found or unauthorized" })
 			}
 
-			res.json({ message: "Comment deleted" })
+			// Soft delete: set deleted_at timestamp
+			await pool.query(
+				`UPDATE comments SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1`,
+				[id],
+			)
+
+			res.json({ success: true })
 		} catch (err) {
 			res.status(500).json({ error: "Failed to delete comment" })
 		}
