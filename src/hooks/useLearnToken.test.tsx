@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { renderHook, waitFor } from "@testing-library/react"
 import { createElement, type ReactNode } from "react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { ToastProvider } from "../components/Toast/ToastProvider"
 import {
 	NotificationContext,
 	type NotificationContextType,
@@ -76,12 +77,16 @@ function createWrapper(address?: string) {
 			QueryClientProvider,
 			{ client: queryClient },
 			createElement(
-				WalletContext.Provider,
-				{ value: walletCtx },
+				ToastProvider,
+				null,
 				createElement(
-					NotificationContext.Provider,
-					{ value: notifCtx },
-					children,
+					WalletContext.Provider,
+					{ value: walletCtx },
+					createElement(
+						NotificationContext.Provider,
+						{ value: notifCtx },
+						children,
+					),
 				),
 			),
 		)
