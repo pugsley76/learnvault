@@ -23,7 +23,8 @@
 12. [Whitepaper Generation](#whitepaper-generation)
 13. [Running Tests](#running-tests)
 14. [Contributing](#contributing)
-15. [Contact](#contact)
+15. [Resources](#resources)
+16. [Contact](#contact)
 
 ---
 
@@ -392,6 +393,12 @@ To contribute:
 4. Join the community discussion in our Discord
 
 All contributors are recognized on-chain and in our official documentation.
+
+---
+
+## Resources
+
+- [Glossary](docs/glossary.md) — Key terms, tokens, and contracts explained in plain English
 
 ---
 
