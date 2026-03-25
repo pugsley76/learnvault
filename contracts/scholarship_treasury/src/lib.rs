@@ -339,14 +339,7 @@ impl ScholarshipTreasury {
         }
     }
 
-    fn token_contract(env: &Env) -> Address {
-        if let Some(token) = env.storage().instance().get::<_, Address>(&USDC_KEY) {
-            token
-        } else {
-            panic_with_error!(env, Error::NotInitialized);
-        }
-    }
-
+    
     fn assert_initialized(env: &Env) {
         if !env.storage().instance().has(&ADMIN_KEY) {
             panic_with_error!(env, Error::NotInitialized);
@@ -377,18 +370,18 @@ mod token {
     mod test_token {
         use soroban_sdk::{Address, Env, Symbol, symbol_short};
 
-        const TOKEN_KEY: Symbol = symbol_short!("TOK");
+        const USDC_KEY: Symbol = symbol_short!("USDC");
 
         pub fn contract_id(env: &Env) -> Address {
             env.storage()
                 .instance()
-                .get::<_, Address>(&TOKEN_KEY)
+                .get::<_, Address>(&USDC_KEY)
                 .expect("token contract not initialized")
         }
 
         pub fn register(env: &Env, admin: &Address) {
             let sac = env.register_stellar_asset_contract_v2(admin.clone());
-            env.storage().instance().set(&TOKEN_KEY, &sac.address());
+            env.storage().instance().set(&USDC_KEY, &sac.address());
         }
 
         pub fn client<'a>(env: &Env) -> soroban_sdk::token::TokenClient<'a> {
@@ -398,7 +391,9 @@ mod token {
 
     #[cfg(not(test))]
     pub fn client<'a>(env: &soroban_sdk::Env) -> soroban_sdk::token::TokenClient<'a> {
-        soroban_sdk::token::TokenClient::new(env, &super::ScholarshipTreasury::token_contract(env))
+        let token_address = env.storage().instance().get::<_, soroban_sdk::Address>(&USDC_KEY)
+            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized));
+        soroban_sdk::token::TokenClient::new(env, &token_address)
     }
 
     #[cfg(test)]
