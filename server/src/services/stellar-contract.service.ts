@@ -279,8 +279,75 @@ async function callMintScholarNFT(
 	}
 }
 
+/**
+ * Check if a learner is enrolled in a course on-chain.
+ */
+async function isEnrolled(
+	learnerAddress: string,
+	courseId: number,
+): Promise<boolean> {
+	if (!COURSE_MILESTONE_CONTRACT_ID) {
+		console.warn(
+			"[stellar] COURSE_MILESTONE_CONTRACT_ID not set — simulating enrollment check",
+		)
+		return true // In dev mode, assume enrolled
+	}
+
+	try {
+		const { Contract, rpc, xdr, Address, Networks, TransactionBuilder } =
+			await import("@stellar/stellar-sdk")
+
+		const server = new rpc.Server(
+			STELLAR_NETWORK === "mainnet"
+				? "https://soroban-rpc.stellar.org"
+				: "https://soroban-testnet.stellar.org",
+		)
+
+		const contract = new Contract(COURSE_MILESTONE_CONTRACT_ID)
+
+		// Use a mock account for simulation
+		const mockAccount = new Address(learnerAddress).toScVal()
+
+		const tx = new TransactionBuilder(
+			{
+				source: "GDGQVOKHW4VEJRU2TETD6DBRKEO5ERCNF353LW5JBF3UKJQ2K5RQDD",
+				fee: "100",
+				networkPassphrase:
+					STELLAR_NETWORK === "mainnet" ? Networks.PUBLIC : Networks.TESTNET,
+			},
+		)
+			.addOperation(
+				contract.call(
+					"is_enrolled",
+					xdr.ScVal.scvAddress(mockAccount),
+					xdr.ScVal.scvU32(courseId),
+				),
+			)
+			.setTimeout(30)
+			.build()
+
+		const simResult = await server.simulateTransaction(tx)
+
+		if (rpc.Api.isSimulationError(simResult)) {
+			console.error("[stellar] is_enrolled simulation failed:", simResult.error)
+			return false
+		}
+
+		if (simResult.result) {
+			const { scValToNative } = await import("@stellar/stellar-sdk")
+			return scValToNative(simResult.result.retval) as boolean
+		}
+
+		return false
+	} catch (err) {
+		console.error("[stellar] is_enrolled check failed:", err)
+		return false
+	}
+}
+
 export const stellarContractService = {
 	callVerifyMilestone,
 	emitRejectionEvent,
 	callMintScholarNFT,
+	isEnrolled,
 }
