@@ -35,8 +35,15 @@ let cachedAdminAddress: string | null = null
 let lastAdminCheckTime: number = 0
 const ADMIN_CACHE_TTL = 5 * 60 * 1000 // 5 minutes in milliseconds
 async function ensureAdminRole(): Promise<void> {
-	const { Keypair, Contract, TransactionBuilder, Networks, BASE_FEE, rpc, scValToNative } =
-		await import("@stellar/stellar-sdk")
+	const {
+		Keypair,
+		Contract,
+		TransactionBuilder,
+		Networks,
+		BASE_FEE,
+		rpc,
+		scValToNative,
+	} = await import("@stellar/stellar-sdk")
 
 	const keypair = Keypair.fromSecret(STELLAR_SECRET_KEY)
 	const serverPubKey = keypair.publicKey()
@@ -44,15 +51,18 @@ async function ensureAdminRole(): Promise<void> {
 	// 1. Check if we have a valid cached result
 	if (Date.now() - lastAdminCheckTime < ADMIN_CACHE_TTL && cachedAdminAddress) {
 		if (serverPubKey !== cachedAdminAddress) {
-			throw new Error(`Server keypair ${serverPubKey} is not the contract admin. Update STELLAR_SECRET_KEY.`)
+			throw new Error(
+				`Server keypair ${serverPubKey} is not the contract admin. Update STELLAR_SECRET_KEY.`,
+			)
 		}
 		return
 	}
 
 	// 2. Cache expired or empty: Fetch from the blockchain
-	const serverUrl = STELLAR_NETWORK === "mainnet"
-		? "https://soroban-rpc.stellar.org"
-		: "https://soroban-testnet.stellar.org"
+	const serverUrl =
+		STELLAR_NETWORK === "mainnet"
+			? "https://soroban-rpc.stellar.org"
+			: "https://soroban-testnet.stellar.org"
 	const server = new rpc.Server(serverUrl)
 
 	const account = await server.getAccount(serverPubKey)
@@ -61,7 +71,8 @@ async function ensureAdminRole(): Promise<void> {
 	// Build a transaction solely to simulate the admin() getter
 	const tx = new TransactionBuilder(account, {
 		fee: BASE_FEE,
-		networkPassphrase: STELLAR_NETWORK === "mainnet" ? Networks.PUBLIC : Networks.TESTNET,
+		networkPassphrase:
+			STELLAR_NETWORK === "mainnet" ? Networks.PUBLIC : Networks.TESTNET,
 	})
 		.addOperation(contract.call("admin"))
 		.setTimeout(30)
@@ -83,7 +94,9 @@ async function ensureAdminRole(): Promise<void> {
 
 	// 4. Verify Authorization
 	if (serverPubKey !== cachedAdminAddress) {
-		throw new Error(`Server keypair ${serverPubKey} is not the contract admin. Update STELLAR_SECRET_KEY.`)
+		throw new Error(
+			`Server keypair ${serverPubKey} is not the contract admin. Update STELLAR_SECRET_KEY.`,
+		)
 	}
 }
 async function callVerifyMilestone(
@@ -150,7 +163,7 @@ async function callVerifyMilestone(
 		console.error("[stellar] Contract call failed:", err)
 		throw new Error(
 			"Contract call failed: " +
-			(err instanceof Error ? err.message : String(err)),
+				(err instanceof Error ? err.message : String(err)),
 		)
 	}
 }
@@ -223,7 +236,7 @@ async function emitRejectionEvent(
 		console.error("[stellar] Rejection event failed:", err)
 		throw new Error(
 			"Rejection event failed: " +
-			(err instanceof Error ? err.message : String(err)),
+				(err instanceof Error ? err.message : String(err)),
 		)
 	}
 }
@@ -307,8 +320,63 @@ async function isEnrolled(
 	}
 
 	try {
-		const { Contract, rpc, xdr, Address, Networks, TransactionBuilder } =
-			await import("@stellar/stellar-sdk")
+		const {
+			Contract,
+			rpc,
+			xdr,
+			Address,
+			Networks,
+			TransactionBuilder,
+			Keypair,
+		} = await import("@stellar/stellar-sdk")
+
+		const server = new rpc.Server(
+			STELLAR_NETWORK === "mainnet"
+				? "https://soroban-rpc.stellar.org"
+				: "https://soroban-testnet.stellar.org",
+		)
+
+		// Get a dummy account for simulation
+		const dummyKeypair = Keypair.random()
+		const dummyAccount = await server.getAccount(dummyKeypair.publicKey())
+
+		const contract = new Contract(COURSE_MILESTONE_CONTRACT_ID)
+
+		// Create address from learner address
+		const learnerScVal = xdr.ScVal.scvAddress(
+			new Address(learnerAddress).toScVal() as any,
+		)
+
+		const tx = new TransactionBuilder(dummyAccount, {
+			fee: "100",
+			networkPassphrase:
+				STELLAR_NETWORK === "mainnet" ? Networks.PUBLIC : Networks.TESTNET,
+		})
+			.addOperation(
+				contract.call("is_enrolled", learnerScVal, xdr.ScVal.scvU32(courseId)),
+			)
+			.setTimeout(30)
+			.build()
+
+		const simResult = await server.simulateTransaction(tx)
+
+		if (rpc.Api.isSimulationError(simResult)) {
+			console.error("[stellar] is_enrolled simulation failed:", simResult.error)
+			return false
+		}
+
+		if (simResult.result) {
+			const { scValToNative } = await import("@stellar/stellar-sdk")
+			return scValToNative(simResult.result.retval) as boolean
+		}
+
+		return false
+	} catch (err) {
+		console.error("[stellar] is_enrolled check failed:", err)
+		return false
+	}
+}
+
 async function submitScholarshipProposal(
 	params: ScholarshipProposalParams,
 ): Promise<ContractCallResult & { proposalId: string | null }> {
@@ -340,24 +408,6 @@ async function submitScholarshipProposal(
 				: "https://soroban-testnet.stellar.org",
 		)
 
-		const contract = new Contract(COURSE_MILESTONE_CONTRACT_ID)
-
-		// Use a mock account for simulation
-		const mockAccount = new Address(learnerAddress).toScVal()
-
-		const tx = new TransactionBuilder(
-			{
-				source: "GDGQVOKHW4VEJRU2TETD6DBRKEO5ERCNF353LW5JBF3UKJQ2K5RQDD",
-				fee: "100",
-				networkPassphrase:
-					STELLAR_NETWORK === "mainnet" ? Networks.PUBLIC : Networks.TESTNET,
-			},
-		)
-			.addOperation(
-				contract.call(
-					"is_enrolled",
-					xdr.ScVal.scvAddress(mockAccount),
-					xdr.ScVal.scvU32(courseId),
 		const keypair = Keypair.fromSecret(STELLAR_SECRET_KEY)
 		const account = await server.getAccount(keypair.publicKey())
 		const contract = new Contract(SCHOLARSHIP_TREASURY_CONTRACT_ID)
@@ -383,22 +433,6 @@ async function submitScholarshipProposal(
 			.setTimeout(30)
 			.build()
 
-		const simResult = await server.simulateTransaction(tx)
-
-		if (rpc.Api.isSimulationError(simResult)) {
-			console.error("[stellar] is_enrolled simulation failed:", simResult.error)
-			return false
-		}
-
-		if (simResult.result) {
-			const { scValToNative } = await import("@stellar/stellar-sdk")
-			return scValToNative(simResult.result.retval) as boolean
-		}
-
-		return false
-	} catch (err) {
-		console.error("[stellar] is_enrolled check failed:", err)
-		return false
 		const prepared = await server.prepareTransaction(tx)
 		prepared.sign(keypair)
 
@@ -423,4 +457,3 @@ export const stellarContractService = {
 	isEnrolled,
 	submitScholarshipProposal,
 }
-
