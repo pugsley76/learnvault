@@ -1,14 +1,17 @@
-﻿import React, { Suspense, lazy } from "react"
-import { Helmet } from "react-helmet"
-import ActivityFeed from "../components/ActivityFeed"
-import { type TreasuryPoint } from "../components/treasury/TreasuryHealthChart"
-
-const TreasuryHealthChart = lazy(
-	() => import("../components/treasury/TreasuryHealthChart"),
-)
+import React from "react"
+import {
+	Area,
+	AreaChart,
+	CartesianGrid,
+	ResponsiveContainer,
+	Tooltip,
+	XAxis,
+	YAxis,
+} from "recharts"
+import TxHashLink from "../components/TxHashLink"
 
 const Treasury: React.FC = () => {
-	const data: TreasuryPoint[] = [
+	const data = [
 		{ name: "Mon", inflows: 4000, outflows: 2400 },
 		{ name: "Tue", inflows: 3000, outflows: 1398 },
 		{ name: "Wed", inflows: 2000, outflows: 9800 },
@@ -109,12 +112,48 @@ const Treasury: React.FC = () => {
 					limit={5}
 					filter="deposit"
 					title="Recent Community Deposits"
+					items={[
+						{
+							user: "G...A1B2",
+							amount: "+500 USDC",
+							time: "2h ago",
+							type: "deposit",
+							txHash:
+								"018d4d55354a1d4f6726932712954d0f5b6797a0d58478a5e89f6a9d3451d3d8",
+						},
+						{
+							user: "G...C3D4",
+							amount: "+1,200 USDC",
+							time: "5h ago",
+							type: "deposit",
+							txHash:
+								"6bc1d844f4cf2700a0eb38ceccc3fb1d9dff3d5ab4be6b5480b6cfebe85e7d8f",
+						},
+					]}
 				/>
 				<ActivityFeed
 					address={undefined}
 					limit={5}
 					filter="disburse"
 					title="Latest Disbursements"
+					items={[
+						{
+							user: "Scholar...FFF",
+							amount: "-150 USDC",
+							time: "1h ago",
+							type: "disburse",
+							txHash:
+								"75c95f0dfcb6487f92f700db74c7028da65d2daff0bbca48af88b30ec74356d9",
+						},
+						{
+							user: "Scholar...GGG",
+							amount: "-150 USDC",
+							time: "3h ago",
+							type: "disburse",
+							txHash:
+								"93d1feea0f9993daf7d43f23cc5e29cf0d9d1e5078db3fdf0aa60c4fa6cab91e",
+						},
+					]}
 				/>
 			</div>
 
@@ -154,6 +193,52 @@ const LegendItem: React.FC<{ color: string; label: string }> = ({
 			style={{ backgroundColor: color }}
 		/>
 		<span className="text-xs font-bold text-white/60">{label}</span>
+	</div>
+)
+
+const ActivityFeed: React.FC<{
+	title: string
+	items: {
+		user: string
+		amount: string
+		time: string
+		type: "deposit" | "disburse"
+		txHash: string
+	}[]
+}> = ({ title, items }) => (
+	<div className="glass p-8 rounded-[2.5rem] border border-white/5">
+		<h3 className="text-xl font-black mb-8 border-l-4 border-brand-cyan pl-4">
+			{title}
+		</h3>
+		<div className="flex flex-col gap-4">
+			{items.map((item, i) => (
+				<div
+					key={i}
+					className="flex items-center justify-between p-5 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/[0.08] transition-colors group"
+				>
+					<div className="flex items-center gap-4">
+						<div
+							className={`w-2 h-2 rounded-full ${item.type === "deposit" ? "bg-brand-emerald animate-pulse" : "bg-brand-purple"}`}
+						/>
+						<div>
+							<p className="font-bold text-sm">{item.user}</p>
+							<p className="text-[10px] text-white/30 uppercase font-black tracking-widest">
+								{item.time}
+							</p>
+							<TxHashLink
+								hash={item.txHash}
+								className="mt-2 inline-flex text-[10px] font-black uppercase tracking-widest text-brand-cyan hover:underline"
+							/>
+						</div>
+					</div>
+					<p
+						className={`font-black ${item.type === "deposit" ? "text-brand-emerald" : "text-white/80"}`}
+					>
+						{item.amount}
+					</p>
+				</div>
+			))}
+		</div>
 	</div>
 )
 

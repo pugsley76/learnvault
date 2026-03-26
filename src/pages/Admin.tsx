@@ -1,109 +1,6 @@
 import React, { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { courses as courseCatalog } from "../data/courses"
-
-type AdminSection =
-	| "courses"
-	| "milestones"
-	| "users"
-	| "treasury"
-	| "contracts"
-
-interface AdminCourse {
-	id: number
-	title: string
-	status: "published" | "draft"
-	students: number
-}
-
-interface MilestoneSubmission {
-	id: number
-	scholar: string
-	amount: string
-	date: string
-	proof: string
-}
-
-interface UserProfilePreview {
-	address: string
-	balance: string
-	enrollment: string
-	tier: string
-}
-
-interface ContractRecord {
-	name: string
-	address: string
-	updated: string
-	tag: string
-}
-
-const adminSections: AdminSection[] = [
-	"courses",
-	"milestones",
-	"users",
-	"treasury",
-	"contracts",
-]
-
-const initialCourses: AdminCourse[] = courseCatalog.map((course, index) => ({
-	id: index + 1,
-	title: course.title,
-	status: index % 2 === 0 ? "published" : "draft",
-	students: index % 2 === 0 ? 96 + index * 18 : 0,
-}))
-
-const initialSubmissions: MilestoneSubmission[] = [
-	{
-		id: 101,
-		scholar: "G...ABC",
-		amount: "50 USDC",
-		date: "2026-03-20",
-		proof: "ipfs://milestone-proof-101",
-	},
-	{
-		id: 102,
-		scholar: "G...XYZ",
-		amount: "100 USDC",
-		date: "2026-03-21",
-		proof: "ipfs://milestone-proof-102",
-	},
-]
-
-const contractRecords: ContractRecord[] = [
-	{
-		name: "ScholarshipTreasury",
-		address: "C...TREAS",
-		updated: "2026-03-20",
-		tag: "FINANCIAL",
-	},
-	{
-		name: "MilestoneEscrow",
-		address: "C...ESCROW",
-		updated: "2026-03-15",
-		tag: "OPERATIONAL",
-	},
-	{
-		name: "ScholarNFT",
-		address: "C...NFT",
-		updated: "2026-03-10",
-		tag: "ASSET",
-	},
-	{
-		name: "LearnToken",
-		address: "C...LRN",
-		updated: "2026-03-05",
-		tag: "REPUTATION",
-	},
-]
-
-const sectionDescriptions: Record<AdminSection, string> = {
-	courses: "Create, organize, and review the course catalog.",
-	milestones: "Approve learner milestones and release funding tranches.",
-	users: "Inspect learner reputation and enrollment activity.",
-	treasury: "Monitor treasury state and safety controls.",
-	contracts: "Review core LearnVault contract identifiers.",
-}
+import TxHashLink from "../components/TxHashLink"
 
 const Admin: React.FC = () => {
 	const [activeSection, setActiveSection] = useState<AdminSection>("courses")
@@ -147,32 +44,34 @@ const Admin: React.FC = () => {
 						</p>
 					</div>
 				</div>
-
-				<nav className="flex flex-col gap-3" aria-label="Admin sections">
-					{adminSections.map((section) => (
-						<button
-							key={section}
-							type="button"
-							className={`w-full text-left px-5 py-3.5 rounded-xl capitalize transition-all duration-300 relative group overflow-hidden ${
-								activeSection === section
-									? "text-brand-cyan font-bold bg-white/5"
-									: "text-white/70 hover:text-white hover:bg-white/[0.03]"
-							}`}
-							onClick={() => setActiveSection(section)}
-							aria-pressed={activeSection === section}
-						>
-							<span className="relative z-10 flex items-center gap-3">
-								<span
-									className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
-										activeSection === section
-											? "bg-brand-cyan scale-125 shadow-[0_0_10px_rgba(0,210,255,0.8)]"
-											: "bg-white/10"
-									}`}
-								/>
-								{section}
-							</span>
-						</button>
-					))}
+				<nav className="flex flex-col gap-3">
+					{["courses", "milestones", "users", "treasury", "contracts"].map(
+						(section) => (
+							<button
+								key={section}
+								className={`w-full text-left px-5 py-3.5 rounded-xl capitalize transition-all duration-300 relative group overflow-hidden ${
+									activeSection === section
+										? "text-brand-cyan font-bold"
+										: "text-white/40 hover:text-white"
+								}`}
+								onClick={() => setActiveSection(section)}
+							>
+								{activeSection === section && (
+									<div className="absolute inset-0 bg-white/5 animate-pulse" />
+								)}
+								<span className="relative z-10 flex items-center gap-3">
+									<span
+										className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
+											activeSection === section
+												? "bg-brand-cyan scale-125 shadow-[0_0_10px_rgba(0,210,255,0.8)]"
+												: "bg-transparent"
+										}`}
+									/>
+									{section}
+								</span>
+							</button>
+						),
+					)}
 				</nav>
 
 				<div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
@@ -288,9 +187,30 @@ const CourseManagement: React.FC = () => {
 }
 
 const MilestoneQueue: React.FC = () => {
-	const [submissions, setSubmissions] =
-		useState<MilestoneSubmission[]>(initialSubmissions)
-	const [notice, setNotice] = useState<string | null>(null)
+	const [submissions, setSubmissions] = useState([
+		{
+			id: 101,
+			scholar: "G...ABC",
+			amount: "50 USDC",
+			date: "2024-03-20",
+			proof: "ipfs://...",
+			reportTxHash:
+				"de6f42f58b785fd2292d9f79089ca7a8e6769f0aa65eb6fe2c56b1e4f82de6a1",
+			approvalTxHash:
+				"7d6a011db9a6f1cb966d2c1ed44b42d416f3b53d14f1277c59823d88efab4653",
+		},
+		{
+			id: 102,
+			scholar: "G...XYZ",
+			amount: "100 USDC",
+			date: "2024-03-21",
+			proof: "ipfs://...",
+			reportTxHash:
+				"f8b91a8d6c0553a46b8c273dc44efcc643c00d5ee12e45033cfc20a5c334f61a",
+			approvalTxHash:
+				"1ccf70a8e112cd40c2a86258183fbced9ae106470ab6ee741fe8e83f8d52b5a9",
+		},
+	])
 
 	const handleAction = (id: number, action: "approve" | "reject") => {
 		setSubmissions((current) =>
@@ -345,6 +265,22 @@ const MilestoneQueue: React.FC = () => {
 								<p className="text-xs text-white/70 uppercase tracking-widest mt-1">
 									Requested: {submission.amount} | Submitted: {submission.date}
 								</p>
+								<div className="mt-3 flex flex-col gap-2">
+									<div className="flex items-center gap-2 text-[10px] uppercase font-black tracking-widest text-white/30">
+										<span>Report</span>
+										<TxHashLink
+											hash={sub.reportTxHash}
+											className="text-brand-cyan hover:underline"
+										/>
+									</div>
+									<div className="flex items-center gap-2 text-[10px] uppercase font-black tracking-widest text-white/30">
+										<span>Approval</span>
+										<TxHashLink
+											hash={sub.approvalTxHash}
+											className="text-brand-cyan hover:underline"
+										/>
+									</div>
+								</div>
 							</div>
 						</div>
 						<div className="flex gap-3">
@@ -559,9 +495,8 @@ const ContractInfo: React.FC = () => {
 								{contract.address}
 							</code>
 						</div>
-						<p className="text-[10px] text-white/70 uppercase tracking-[2px]">
-							Last Audit/Update:{" "}
-							<span className="text-white/85">{contract.updated}</span>
+						<p className="text-[10px] text-white/30 uppercase tracking-[2px]">
+							Last Audit/Update: <span className="text-white/60">{c.updated}</span>
 						</p>
 					</div>
 				))}
