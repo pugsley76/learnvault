@@ -1,11 +1,8 @@
 extern crate std;
 
-use soroban_sdk::{Address, Env, String, contract, contractimpl, testutils::Address as _};
+use soroban_sdk::{Address, Env, String, testutils::Address as _};
 
-use crate::{CourseConfig, CourseMilestone, CourseMilestoneClient, MilestoneStatus, ScholarStats};
-
-const COURSE_ID: &str = "rust-101";
-const EVIDENCE_URI: &str = "ipfs://bafy-test-proof";
+use crate::{CourseMilestone, CourseMilestoneClient, Error, MilestoneStatus};
 
 fn sid(env: &Env, value: &str) -> String {
     String::from_str(env, value)
@@ -25,7 +22,7 @@ fn setup() -> (Env, Address, Address, CourseMilestoneClient<'static>) {
 fn enrolls_learner() {
     let (env, _contract_id, _admin, client) = setup();
     let learner = Address::generate(&env);
-    let course_id = sid(&env, COURSE_ID);
+    let course_id = sid(&env, "rust-101");
 
     client.enroll(&learner, &course_id);
 
@@ -36,8 +33,8 @@ fn enrolls_learner() {
 fn enrolled_learner_can_submit_once_and_submission_is_stored() {
     let (env, _contract_id, _admin, client) = setup();
     let learner = Address::generate(&env);
-    let course_id = sid(&env, COURSE_ID);
-    let evidence_uri = sid(&env, EVIDENCE_URI);
+    let course_id = sid(&env, "rust-101");
+    let evidence_uri = sid(&env, "ipfs://bafy-test-proof");
 
     client.enroll(&learner, &course_id);
     client.submit_milestone(&learner, &course_id, &1, &evidence_uri);
@@ -56,8 +53,8 @@ fn enrolled_learner_can_submit_once_and_submission_is_stored() {
 fn non_enrolled_learner_cannot_submit() {
     let (env, _contract_id, _admin, client) = setup();
     let learner = Address::generate(&env);
-    let course_id = sid(&env, COURSE_ID);
-    let evidence_uri = sid(&env, EVIDENCE_URI);
+    let course_id = sid(&env, "rust-101");
+    let evidence_uri = sid(&env, "ipfs://bafy-test-proof");
 
     let result = client.try_submit_milestone(&learner, &course_id, &1, &evidence_uri);
 
@@ -73,8 +70,8 @@ fn non_enrolled_learner_cannot_submit() {
 fn duplicate_submission_is_rejected() {
     let (env, _contract_id, _admin, client) = setup();
     let learner = Address::generate(&env);
-    let course_id = sid(&env, COURSE_ID);
-    let evidence_uri = sid(&env, EVIDENCE_URI);
+    let course_id = sid(&env, "rust-101");
+    let evidence_uri = sid(&env, "ipfs://bafy-test-proof");
 
     client.enroll(&learner, &course_id);
     client.submit_milestone(&learner, &course_id, &7, &evidence_uri);
@@ -90,59 +87,82 @@ fn duplicate_submission_is_rejected() {
 }
 
 #[test]
-fn test_get_scholar_stats_counts_mixed_states() {
-    let (env, _admin, _contract_id, client) = setup();
-    env.mock_all_auths();
-
+fn get_milestone_status_returns_not_started_by_default() {
+    let (env, _contract_id, _admin, client) = setup();
     let learner = Address::generate(&env);
-    let second_learner = Address::generate(&env);
+    let course_id = sid(&env, "rust-101");
 
-    client.add_course(&1, &3, &50);
-    client.add_course(&2, &2, &75);
-
-    client.enroll(&learner, &1);
-    client.enroll(&learner, &2);
-    client.enroll(&second_learner, &2);
-
-    client.submit_milestone(&learner, &1, &1);
-    client.verify_milestone(&learner, &1, &1);
-
-    client.submit_milestone(&learner, &1, &2);
-
-    client.submit_milestone(&learner, &2, &1);
-    let reason = String::from_str(&env, "Missing proof");
-    client.reject_milestone(&learner, &2, &1, &reason);
-
-    client.submit_milestone(&second_learner, &2, &1);
-    client.verify_milestone(&second_learner, &2, &1);
-
-    assert_eq!(
-        client.get_scholar_stats(&learner),
-        ScholarStats {
-            enrolled_courses: 2,
-            completed_milestones: 1,
-            pending_milestones: 1,
-            rejected_milestones: 1,
-        }
-    );
+    let status = client.get_milestone_status(&learner, &course_id, &1);
+    assert_eq!(status, MilestoneStatus::NotStarted);
 }
 
 #[test]
-fn test_get_scholar_stats_returns_zero_for_unenrolled_learner() {
-    let (env, _admin, _contract_id, client) = setup();
-    env.mock_all_auths();
+fn get_milestone_status_returns_pending_after_submission() {
+    let (env, _contract_id, _admin, client) = setup();
+    let learner = Address::generate(&env);
+    let course_id = sid(&env, "rust-101");
+    let evidence = sid(&env, "ipfs://bafy-proof");
 
+    client.enroll(&learner, &course_id);
+    client.submit_milestone(&learner, &course_id, &1, &evidence);
+
+    let status = client.get_milestone_status(&learner, &course_id, &1);
+    assert_eq!(status, MilestoneStatus::Pending);
+}
+
+#[test]
+fn get_milestone_status_not_started_for_unsubmitted_milestone() {
+    let (env, _contract_id, _admin, client) = setup();
+    let learner = Address::generate(&env);
+    let course_id = sid(&env, "rust-101");
+    let evidence = sid(&env, "ipfs://bafy-proof");
+
+    client.enroll(&learner, &course_id);
+    client.submit_milestone(&learner, &course_id, &1, &evidence);
+
+    let status = client.get_milestone_status(&learner, &course_id, &2);
+    assert_eq!(status, MilestoneStatus::NotStarted);
+}
+
+#[test]
+fn get_enrolled_courses_returns_empty_for_new_learner() {
+    let (env, _contract_id, _admin, client) = setup();
     let learner = Address::generate(&env);
 
-    client.add_course(&1, &3, &50);
+    let courses = client.get_enrolled_courses(&learner);
+    assert_eq!(courses.len(), 0);
+}
 
-    assert_eq!(
-        client.get_scholar_stats(&learner),
-        ScholarStats {
-            enrolled_courses: 0,
-            completed_milestones: 0,
-            pending_milestones: 0,
-            rejected_milestones: 0,
-        }
-    );
+#[test]
+fn get_enrolled_courses_returns_enrolled_courses() {
+    let (env, _contract_id, _admin, client) = setup();
+    let learner = Address::generate(&env);
+
+    client.enroll(&learner, &sid(&env, "rust-101"));
+    client.enroll(&learner, &sid(&env, "defi-201"));
+
+    let courses = client.get_enrolled_courses(&learner);
+    assert_eq!(courses.len(), 2);
+    assert_eq!(courses.get(0).unwrap(), sid(&env, "rust-101"));
+    assert_eq!(courses.get(1).unwrap(), sid(&env, "defi-201"));
+}
+
+#[test]
+fn get_enrolled_courses_is_per_learner() {
+    let (env, _contract_id, _admin, client) = setup();
+    let learner_a = Address::generate(&env);
+    let learner_b = Address::generate(&env);
+
+    client.enroll(&learner_a, &sid(&env, "rust-101"));
+    client.enroll(&learner_a, &sid(&env, "defi-201"));
+    client.enroll(&learner_b, &sid(&env, "rust-101"));
+
+    assert_eq!(client.get_enrolled_courses(&learner_a).len(), 2);
+    assert_eq!(client.get_enrolled_courses(&learner_b).len(), 1);
+}
+
+#[test]
+fn get_version_returns_semver() {
+    let (env, _contract_id, _admin, client) = setup();
+    assert_eq!(client.get_version(), String::from_str(&env, "1.0.0"));
 }

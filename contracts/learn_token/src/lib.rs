@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(deprecated)]
 
 //! # LearnToken (LRN)
 //!
@@ -116,6 +117,24 @@ impl LearnToken {
             .publish((symbol_short!("lrn_mint"), to.clone()), amount);
     }
 
+    /// Transfer the admin role to a new address. Admin only.
+    pub fn set_admin(env: Env, new_admin: Address) {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&ADMIN_KEY)
+            .unwrap_or_else(|| panic_with_error!(&env, LRNError::NotInitialized));
+        admin.require_auth();
+        env.storage().instance().set(&ADMIN_KEY, &new_admin);
+        env.events()
+            .publish((symbol_short!("set_admin"),), new_admin);
+    }
+
+    /// Transfer is not allowed — LRN is soulbound.
+    pub fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {
+        panic_with_error!(&_env, LRNError::Soulbound);
+    }
+
     // -----------------------------------------------------------------------
     // Read functions
     // -----------------------------------------------------------------------
@@ -150,6 +169,17 @@ impl LearnToken {
             .instance()
             .get(&SYMBOL_KEY)
             .unwrap_or_else(|| String::from_str(&env, "LRN"))
+    }
+
+    pub fn get_version(env: Env) -> String {
+        String::from_str(&env, "1.0.0")
+    }
+
+    /// Calculate reputation score based on balance.
+    /// Formula: reputation = balance / 100 (integer division)
+    pub fn reputation_score(env: Env, account: Address) -> i128 {
+        let balance = Self::balance(env, account);
+        balance / 100
     }
 }
 

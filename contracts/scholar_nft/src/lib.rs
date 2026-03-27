@@ -2,179 +2,123 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
-    Env, String, Symbol,
+    Env, String,
 };
 
-// ---------------------------------------------------------------------------
-// Storage keys
-// ---------------------------------------------------------------------------
-
-const ADMIN_KEY: Symbol = symbol_short!("ADMIN");
-const TOKEN_COUNTER_KEY: Symbol = symbol_short!("CTR");
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-#[derive(Clone)]
-#[contracttype]
-pub struct ScholarMetadata {
-    pub scholar: Address,
-    pub program_name: String,
-    pub completion_date: u64,
-    pub ipfs_uri: Option<String>,
-}
-
-#[derive(Clone)]
-#[contracttype]
-pub enum DataKey {
-    Owner(u64),
-    ScholarToken(Address),
-    Metadata(u64),
-    TokenUri(u64),
-}
-
-// ---------------------------------------------------------------------------
-// Errors
-// ---------------------------------------------------------------------------
-
 #[contracterror]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
-pub enum ScholarNFTError {
+pub enum Error {
     AlreadyInitialized = 1,
-    Unauthorized = 2,
-    NotInitialized = 3,
+    NotInitialized = 2,
+    Unauthorized = 3,
     TokenNotFound = 4,
-    Soulbound = 5,
-    ScholarAlreadyMinted = 6,
+    TokenRevoked = 5,
+    TokenExists = 6,
 }
 
-// ---------------------------------------------------------------------------
-// Contract
-// ---------------------------------------------------------------------------
+#[contracttype]
+#[derive(Clone)]
+pub enum DataKey {
+    Admin,
+    Owner(u64),      // token_id -> Address
+    Revoked(u64),    // token_id -> String (reason)
+}
 
 #[contract]
 pub struct ScholarNFT;
 
 #[contractimpl]
 impl ScholarNFT {
-    /// One-time initialisation — sets the admin and zeroes the token counter.
+    /// Initialize the contract with an admin address.
     pub fn initialize(env: Env, admin: Address) {
-        if env.storage().instance().has(&ADMIN_KEY) {
-            panic_with_error!(&env, ScholarNFTError::AlreadyInitialized);
+        if env.storage().instance().has(&DataKey::Admin) {
+            panic_with_error!(&env, Error::AlreadyInitialized);
         }
-        admin.require_auth();
-        env.storage().instance().set(&ADMIN_KEY, &admin);
-        env.storage()
-            .instance()
-            .set(&TOKEN_COUNTER_KEY, &0_u64);
+        env.storage().instance().set(&DataKey::Admin, &admin);
     }
 
-    /// Mint a soulbound Scholar NFT to `to`.
-    ///
-    /// Each scholar may only hold **one** credential; a second mint for the
-    /// same address reverts with `ScholarAlreadyMinted`.
-    pub fn mint(env: Env, to: Address, metadata_uri: String) -> u64 {
-        let admin = Self::admin(&env);
+    /// Mint a new soulbound NFT. Only callable by admin.
+    pub fn mint(env: Env, to: Address, token_id: u64) {
+        let admin = Self::get_admin(&env);
         admin.require_auth();
 
-        // Prevent duplicate mints for the same scholar
-        let scholar_key = DataKey::ScholarToken(to.clone());
-        if env.storage().persistent().has(&scholar_key) {
-            panic_with_error!(&env, ScholarNFTError::ScholarAlreadyMinted);
+        let key = DataKey::Owner(token_id);
+        if env.storage().persistent().has(&key) {
+            panic_with_error!(&env, Error::TokenExists);
         }
 
-        let next_token_id = Self::token_counter(&env).saturating_add(1);
-        env.storage()
-            .instance()
-            .set(&TOKEN_COUNTER_KEY, &next_token_id);
+        env.storage().persistent().set(&key, &to);
 
-        // Owner mapping
-        env.storage()
-            .persistent()
-            .set(&DataKey::Owner(next_token_id), &to);
-
-        // Reverse lookup: scholar -> token id
-        env.storage()
-            .persistent()
-            .set(&scholar_key, &next_token_id);
-
-        // Store the raw URI for token_uri() queries
-        env.storage()
-            .persistent()
-            .set(&DataKey::TokenUri(next_token_id), &metadata_uri);
-
-        // Rich metadata
-        let metadata = ScholarMetadata {
-            scholar: to,
-            program_name: metadata_uri.clone(),
-            completion_date: env.ledger().timestamp(),
-            ipfs_uri: Some(metadata_uri),
-        };
-        env.storage()
-            .persistent()
-            .set(&DataKey::Metadata(next_token_id), &metadata);
-
-        next_token_id
+        env.events().publish(
+            (symbol_short!("minted"), token_id, to.clone()),
+            to,
+        );
     }
 
-    /// Return the owner of `token_id`. Panics if the token does not exist.
+    /// Revoke a credential. Only callable by admin.
+    pub fn revoke(env: Env, admin: Address, token_id: u64, reason: String) {
+        // Admin-only guard
+        admin.require_auth();
+        let stored_admin = Self::get_admin(&env);
+        if admin != stored_admin {
+            panic_with_error!(&env, Error::Unauthorized);
+        }
+
+        let key = DataKey::Owner(token_id);
+        if !env.storage().persistent().has(&key) {
+            panic_with_error!(&env, Error::TokenNotFound);
+        }
+
+        // Mark the token as revoked in storage
+        let revoked_key = DataKey::Revoked(token_id);
+        if env.storage().persistent().has(&revoked_key) {
+             return;
+        }
+
+        env.storage().persistent().set(&revoked_key, &reason);
+
+        // Emit { topic: ["revoked", token_id], data: { reason } } event
+        env.events().publish(
+            (symbol_short!("revoked"), token_id),
+            reason,
+        );
+    }
+
+    /// Returns the owner of the token.
+    /// owner_of() should return an error or special value for revoked tokens.
     pub fn owner_of(env: Env, token_id: u64) -> Address {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Owner(token_id))
-            .unwrap_or_else(|| panic_with_error!(&env, ScholarNFTError::TokenNotFound))
+        if env.storage().persistent().has(&DataKey::Revoked(token_id)) {
+            panic_with_error!(&env, Error::TokenRevoked);
+        }
+
+        let key = DataKey::Owner(token_id);
+        if let Some(owner) = env.storage().persistent().get::<_, Address>(&key) {
+            owner
+        } else {
+            panic_with_error!(&env, Error::TokenNotFound);
+        }
     }
 
-    /// Return the metadata URI for `token_id`. Panics if the token does not exist.
-    pub fn token_uri(env: Env, token_id: u64) -> String {
-        env.storage()
-            .persistent()
-            .get(&DataKey::TokenUri(token_id))
-            .unwrap_or_else(|| panic_with_error!(&env, ScholarNFTError::TokenNotFound))
+    /// Returns true if the token is a valid credential.
+    /// has_credential() should return false for revoked tokens.
+    pub fn has_credential(env: Env, token_id: u64) -> bool {
+        if env.storage().persistent().has(&DataKey::Revoked(token_id)) {
+            return false;
+        }
+
+        env.storage().persistent().has(&DataKey::Owner(token_id))
     }
 
-    /// Transfers are **always** rejected — Scholar NFTs are soulbound.
-    pub fn transfer(env: Env, _from: Address, _to: Address, _token_id: u64) {
-        panic_with_error!(&env, ScholarNFTError::Soulbound)
+    pub fn get_revocation_reason(env: Env, token_id: u64) -> Option<String> {
+        env.storage().persistent().get(&DataKey::Revoked(token_id))
     }
 
-    /// Look up the token ID held by `scholar`, if any.
-    pub fn get_token(env: Env, scholar: Address) -> Option<u64> {
-        env.storage()
-            .persistent()
-            .get(&DataKey::ScholarToken(scholar))
-    }
-
-    /// Return the rich metadata struct for `token_id`, if it exists.
-    pub fn get_metadata(env: Env, token_id: u64) -> Option<ScholarMetadata> {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Metadata(token_id))
-    }
-
-    /// Check whether `scholar` already holds a credential.
-    pub fn has_credential(env: Env, scholar: Address) -> bool {
-        env.storage()
-            .persistent()
-            .has(&DataKey::ScholarToken(scholar))
-    }
-
-    // -- private helpers ----------------------------------------------------
-
-    fn token_counter(env: &Env) -> u64 {
+    fn get_admin(env: &Env) -> Address {
         env.storage()
             .instance()
-            .get(&TOKEN_COUNTER_KEY)
-            .unwrap_or(0_u64)
-    }
-
-    fn admin(env: &Env) -> Address {
-        env.storage()
-            .instance()
-            .get(&ADMIN_KEY)
-            .unwrap_or_else(|| panic_with_error!(env, ScholarNFTError::NotInitialized))
+            .get::<_, Address>(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(env, Error::NotInitialized))
     }
 }
 

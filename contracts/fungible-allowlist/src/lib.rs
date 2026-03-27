@@ -1,2 +1,4 @@
 #![no_std]
-// Placeholder — implementation pending.
+pub struct FungibleAllowlist;
+#[soroban_sdk::contract]
+impl FungibleAllowlist {}
