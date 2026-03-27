@@ -57,7 +57,7 @@ export function useAdminMilestones() {
   const fetchMilestones = useCallback(
     async (
       pageNum: number = 1,
-      filters: { course?: string; status?: string } = {}
+      filters: { course?: string; status?: string } = {},
     ) => {
       setLoading(true);
       setError(null);
@@ -80,56 +80,50 @@ export function useAdminMilestones() {
         setLoading(false);
       }
     },
-    []
+    [],
   );
 
-  const approveMilestone = useCallback(
-    async (id: string): Promise<boolean> => {
-      // Optimistic update
+  const approveMilestone = useCallback(async (id: string): Promise<boolean> => {
+    // Optimistic update
+    setMilestones((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, status: "approved" } : m)),
+    );
+    try {
+      const res = await fetch(`/api/admin/milestones/${id}/approve`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error("Approval failed");
+      return true;
+    } catch (err: unknown) {
+      // Rollback on failure
       setMilestones((prev) =>
-        prev.map((m) => (m.id === id ? { ...m, status: "approved" } : m))
+        prev.map((m) => (m.id === id ? { ...m, status: "pending" } : m)),
       );
-      try {
-        const res = await fetch(`/api/admin/milestones/${id}/approve`, {
-          method: "POST",
-        });
-        if (!res.ok) throw new Error("Approval failed");
-        return true;
-      } catch (err: unknown) {
-        // Rollback on failure
-        setMilestones((prev) =>
-          prev.map((m) => (m.id === id ? { ...m, status: "pending" } : m))
-        );
-        setError(err instanceof Error ? err.message : "Approval failed");
-        return false;
-      }
-    },
-    []
-  );
+      setError(err instanceof Error ? err.message : "Approval failed");
+      return false;
+    }
+  }, []);
 
-  const rejectMilestone = useCallback(
-    async (id: string): Promise<boolean> => {
-      // Optimistic update
+  const rejectMilestone = useCallback(async (id: string): Promise<boolean> => {
+    // Optimistic update
+    setMilestones((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, status: "rejected" } : m)),
+    );
+    try {
+      const res = await fetch(`/api/admin/milestones/${id}/reject`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error("Rejection failed");
+      return true;
+    } catch (err: unknown) {
+      // Rollback on failure
       setMilestones((prev) =>
-        prev.map((m) => (m.id === id ? { ...m, status: "rejected" } : m))
+        prev.map((m) => (m.id === id ? { ...m, status: "pending" } : m)),
       );
-      try {
-        const res = await fetch(`/api/admin/milestones/${id}/reject`, {
-          method: "POST",
-        });
-        if (!res.ok) throw new Error("Rejection failed");
-        return true;
-      } catch (err: unknown) {
-        // Rollback on failure
-        setMilestones((prev) =>
-          prev.map((m) => (m.id === id ? { ...m, status: "pending" } : m))
-        );
-        setError(err instanceof Error ? err.message : "Rejection failed");
-        return false;
-      }
-    },
-    []
-  );
+      setError(err instanceof Error ? err.message : "Rejection failed");
+      return false;
+    }
+  }, []);
 
   return {
     milestones,
