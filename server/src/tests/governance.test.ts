@@ -1,4 +1,8 @@
+process.env.JWT_SECRET = "learnvault-secret"
+process.env.ADMIN_ADDRESSES = "GADMIN123"
+
 import express from "express"
+import jwt from "jsonwebtoken"
 import request from "supertest"
 
 // Mock the dependencies before importing the router/controller
@@ -20,6 +24,10 @@ jest.mock("../services/stellar-contract.service", () => ({
 			txHash: "mock_vote_tx_hash",
 			simulated: false,
 		}),
+		cancelProposal: jest.fn().mockResolvedValue({
+			txHash: "mock_cancel_tx_hash",
+			simulated: false,
+		}),
 	},
 }))
 
@@ -28,6 +36,12 @@ import { governanceRouter } from "../routes/governance.routes"
 const app = express()
 app.use(express.json())
 app.use("/api", governanceRouter)
+
+const JWT_SECRET = "learnvault-secret"
+
+function makeToken(address: string) {
+	return jwt.sign({ address }, JWT_SECRET, { expiresIn: "1h" })
+}
 
 describe("POST /api/governance/proposals", () => {
 	it("should create a valid governance proposal", async () => {
@@ -250,7 +264,12 @@ describe("POST /api/governance/vote", () => {
 		pool.query
 			.mockResolvedValueOnce({
 				rows: [
-					{ id: 1, status: "pending", deadline: "2099-01-01T00:00:00.000Z" },
+					{
+						id: 1,
+						status: "pending",
+						deadline: "2099-01-01T00:00:00.000Z",
+						cancelled: false,
+					},
 				],
 			}) // proposal check
 			.mockResolvedValueOnce({ rows: [] }) // no existing vote
@@ -341,7 +360,12 @@ describe("POST /api/governance/vote", () => {
 		pool.query
 			.mockResolvedValueOnce({
 				rows: [
-					{ id: 1, status: "pending", deadline: "2099-01-01T00:00:00.000Z" },
+					{
+						id: 1,
+						status: "pending",
+						deadline: "2099-01-01T00:00:00.000Z",
+						cancelled: false,
+					},
 				],
 			})
 			.mockResolvedValueOnce({ rows: [{ id: 1 }] })
@@ -364,7 +388,12 @@ describe("POST /api/governance/vote", () => {
 		pool.query
 			.mockResolvedValueOnce({
 				rows: [
-					{ id: 1, status: "pending", deadline: "2099-01-01T00:00:00.000Z" },
+					{
+						id: 1,
+						status: "pending",
+						deadline: "2099-01-01T00:00:00.000Z",
+						cancelled: false,
+					},
 				],
 			})
 			.mockResolvedValueOnce({ rows: [] })
@@ -385,7 +414,12 @@ describe("POST /api/governance/vote", () => {
 		pool.query
 			.mockResolvedValueOnce({
 				rows: [
-					{ id: 1, status: "pending", deadline: "2099-01-01T00:00:00.000Z" },
+					{
+						id: 1,
+						status: "pending",
+						deadline: "2099-01-01T00:00:00.000Z",
+						cancelled: false,
+					},
 				],
 			})
 			.mockResolvedValueOnce({ rows: [] })
@@ -422,5 +456,100 @@ describe("POST /api/governance/vote", () => {
 			"error",
 			"Voting is closed for this proposal",
 		)
+	})
+})
+
+describe("GET /api/proposals/:id/status", () => {
+	let pool: any
+
+	beforeEach(() => {
+		jest.clearAllMocks()
+		pool = require("../db/index").pool
+	})
+
+	it("returns open status for a live pending proposal", async () => {
+		pool.query.mockResolvedValueOnce({
+			rows: [{ id: 7, status: "pending", cancelled: false, deadline: null }],
+		})
+
+		const response = await request(app).get("/api/proposals/7/status")
+
+		expect(response.status).toBe(200)
+		expect(response.body).toEqual({
+			id: 7,
+			state: "open",
+			status: "pending",
+			cancelled: false,
+			deadline: null,
+		})
+	})
+
+	it("returns cancelled state for a cancelled proposal", async () => {
+		pool.query.mockResolvedValueOnce({
+			rows: [{ id: 7, status: "pending", cancelled: true, deadline: null }],
+		})
+
+		const response = await request(app).get("/api/proposals/7/status")
+
+		expect(response.status).toBe(200)
+		expect(response.body.state).toBe("cancelled")
+	})
+})
+
+describe("DELETE /api/proposals/:id", () => {
+	let pool: any
+	let stellarContractService: any
+
+	beforeEach(() => {
+		jest.clearAllMocks()
+		const db = require("../db/index")
+		const scs = require("../services/stellar-contract.service")
+		pool = db.pool
+		stellarContractService = scs.stellarContractService
+	})
+
+	it("allows an admin to cancel an open proposal", async () => {
+		pool.query
+			.mockResolvedValueOnce({
+				rows: [{ id: 12, status: "pending", cancelled: false, deadline: null }],
+			})
+			.mockResolvedValueOnce({ rows: [] })
+
+		const response = await request(app)
+			.delete("/api/proposals/12")
+			.set("Authorization", `Bearer ${makeToken("GADMIN123")}`)
+
+		expect(response.status).toBe(204)
+		expect(stellarContractService.cancelProposal).toHaveBeenCalledWith({
+			proposalId: 12,
+		})
+		expect(pool.query).toHaveBeenNthCalledWith(
+			2,
+			"UPDATE proposals SET cancelled = TRUE WHERE id = $1",
+			[12],
+		)
+	})
+
+	it("rejects non-admin users", async () => {
+		const response = await request(app)
+			.delete("/api/proposals/12")
+			.set("Authorization", `Bearer ${makeToken("GNOTADMIN123")}`)
+
+		expect(response.status).toBe(403)
+		expect(response.body.error).toBe("Forbidden: not an admin address")
+	})
+
+	it("returns 409 for an already-cancelled proposal", async () => {
+		pool.query.mockResolvedValueOnce({
+			rows: [{ id: 12, status: "pending", cancelled: true, deadline: null }],
+		})
+
+		const response = await request(app)
+			.delete("/api/proposals/12")
+			.set("Authorization", `Bearer ${makeToken("GADMIN123")}`)
+
+		expect(response.status).toBe(409)
+		expect(response.body.error).toBe("Proposal is already cancelled")
+		expect(stellarContractService.cancelProposal).not.toHaveBeenCalled()
 	})
 })
