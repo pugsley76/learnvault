@@ -12,7 +12,8 @@ class MockPool {
 	}
 }
 
-let activePool: any
+let activePool: Pool | MockPool
+
 try {
 	activePool = new Pool({
 		connectionString: process.env.DATABASE_URL,
@@ -28,6 +29,11 @@ try {
 
 export const pool = activePool
 
+/**
+ * Verifies the database connection on startup.
+ * Schema is managed exclusively via migrations (`npm run migrate`).
+ * No DDL is executed here.
+ */
 export const initDb = async () => {
 	try {
 		if (activePool instanceof Pool) {

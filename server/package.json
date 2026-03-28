@@ -8,7 +8,9 @@
     "start": "node dist/index.js",
     "docs:generate": "node scripts/generate-openapi.cjs",
     "test": "jest --runInBand",
-    "db:migrate": "ts-node scripts/migrate.ts",
+    "migrate": "ts-node scripts/migrate.ts up",
+    "migrate:rollback": "ts-node scripts/migrate.ts down",
+    "db:migrate": "npm run migrate",
     "db:seed": "ts-node scripts/seed.ts"
   },
   "dependencies": {
