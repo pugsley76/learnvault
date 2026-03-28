@@ -1,7 +1,7 @@
 extern crate std;
 
 use soroban_sdk::{
-    Address, Env, IntoVal, String, Val, contract, contractimpl, contracttype, symbol_short, vec,
+    Address, Env, IntoVal, String, Val, Vec, contract, contractimpl, contracttype, symbol_short, vec,
     testutils::{Address as _, Events as _, MockAuth, MockAuthInvoke},
 };
 
@@ -40,7 +40,7 @@ fn sid(env: &Env, value: &str) -> String {
 
 fn authorize<T>(env: &Env, address: &Address, contract: &Address, fn_name: &'static str, args: T)
 where
-    T: IntoVal<Env, Val>,
+    T: IntoVal<Env, Vec<Val>>,
 {
     env.mock_auths(&[MockAuth {
         address,
