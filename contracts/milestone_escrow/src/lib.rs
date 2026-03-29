@@ -187,6 +187,7 @@ impl MilestoneEscrow {
         record.released_amount = record.total_amount;
         record.last_activity = now;
         env.storage().persistent().set(&key, &record);
+
         EscrowReclaimed {
             proposal_id,
             scholar: record.scholar.clone(),

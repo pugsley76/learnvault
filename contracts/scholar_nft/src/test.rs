@@ -47,6 +47,34 @@ fn owner_of_returns_minted_owner() {
 }
 
 #[test]
+fn get_all_scholars_is_empty_before_mint() {
+    let env = Env::default();
+    let (_, _admin, client) = setup(&env);
+
+    assert_eq!(client.get_all_scholars().len(), 0);
+}
+
+#[test]
+fn get_all_scholars_returns_all_minted_scholars_in_order() {
+    let env = Env::default();
+    let (_, _admin, client) = setup(&env);
+    let scholar_a = Address::generate(&env);
+    let scholar_b = Address::generate(&env);
+    let scholar_c = Address::generate(&env);
+
+    env.mock_all_auths();
+    client.mint(&scholar_a, &cid(&env, "ipfs://scholar-a"));
+    client.mint(&scholar_b, &cid(&env, "ipfs://scholar-b"));
+    client.mint(&scholar_c, &cid(&env, "ipfs://scholar-c"));
+
+    let scholars = client.get_all_scholars();
+    assert_eq!(scholars.len(), 3);
+    assert_eq!(scholars.get(0).unwrap(), scholar_a);
+    assert_eq!(scholars.get(1).unwrap(), scholar_b);
+    assert_eq!(scholars.get(2).unwrap(), scholar_c);
+}
+
+#[test]
 fn test_transfer_admin_success_and_old_admin_cannot_mint() {
     let env = Env::default();
     env.mock_all_auths();
@@ -161,6 +189,19 @@ fn token_uri_returns_metadata_uri() {
     let token_id = client.mint(&scholar, &metadata_uri);
 
     assert_eq!(client.token_uri(&token_id), metadata_uri);
+}
+
+#[test]
+fn get_metadata_uri_round_trip() {
+    let env = Env::default();
+    let (_, _admin, client) = setup(&env);
+    let scholar = Address::generate(&env);
+    let uri = cid(&env, "ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi");
+
+    env.mock_all_auths();
+    let token_id = client.mint(&scholar, &uri);
+
+    assert_eq!(client.get_metadata_uri(&token_id), uri);
 }
 
 #[test]
